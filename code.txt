@@ -1,0 +1,623 @@
+<?php
+class Language extends CI_Controller 
+{
+	public function __construct()
+	{
+		parent::__construct();
+		//-------------------------------------common area ------------------
+		//load libs and models
+		$this->load->library('session');
+		$this->load->model('Languagemodel');
+		$this->load->model('Commonmodel');
+		$this->load->library('pagination');
+		//language button check
+		$langsesID=$this->Languagemodel->selectedlanguage();
+		
+		//language session check		
+		$langID=$this->session->userdata('tlanguageID');
+		$this->languageID=$langID;
+		$langCode=$this->session->userdata('tlangCode');
+		$langName=$this->session->userdata('tlangName');
+		$langFolder=$this->session->userdata('tlangFolder'); 
+		
+		//load language file		
+		$this->lang->load('main',$langFolder);
+		
+		//fetch all active languages for header lang button
+		$data['langAr'] = $this->Languagemodel->allLanguages();	
+		$this->langAr=$data['langAr'];
+		
+		//fetch all active settings for header settings button
+		$data['set'] = $this->Commonmodel->allSettings($this->languageID); 
+		$this->set=$data['set'];
+		
+		// Start of permission check
+		
+		//login session check
+		$userlogintype=$this->session->userdata('tlogintype');
+		$logintdmcustID=$this->session->userdata('tdmcustID');
+		if($userlogintype=="Admin" && $logintdmcustID!='')
+		{
+		$adminID=$this->session->userdata('tadminID');
+		$this->adminID=$adminID;
+		$this->loginuserID=$adminID;
+		$this->loginusertype=$userlogintype;
+		$this->loginroleID	= $this->session->userdata('tadmroleID');
+		}
+		else if($userlogintype=="Agent" && $logintdmcustID!='')
+		{
+		$agentID=$this->session->userdata('tagentID');
+		$this->loginuserID=$agentID;
+		$this->loginusertype=$userlogintype;
+		$this->loginroleID	= $this->session->userdata('tagroleID');
+		}
+		else
+		{
+		$this->load->view('loginview',$this->langAr);	
+		}
+		
+		//module access check
+		$allowedaccess=$this->Commonmodel->moduleaccessControl();
+		if($allowedaccess==0)
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+		else
+		{
+			$this->getaccess=$allowedaccess;		     
+			$AccessmainModules=$this->session->userdata('mainModules');
+			$modcod=$this->Commonmodel->modulesdetails($AccessmainModules);
+			$this->sesmodulecodes=$modcod;
+			$AccessubModules=$this->session->userdata('subModules');
+			$submodcod=$this->Commonmodel->submodulesdetails($AccessubModules); 
+			$this->sessubmodulecodes=$submodcod;
+		}
+		//role privilege
+		
+		//mega menu content --------------- fetch modulename based on language selected		
+		$this->allactivemod	= $this->Commonmodel->adminactivemodules($this->languageID);
+		$this->activemodnames	= $this->Commonmodel->adminactivemodulenames($this->languageID);
+		$this->activemainmodnames	= $this->Commonmodel->adminactivemainmodulenames($this->languageID);
+
+			
+		//-------------------------------------end of common area ------------------	
+		
+		//session value of default language [managed in settings]
+		$defaultLangfile="english";//comes from session defaultlang
+		$defaultLangfilepath='application/language/'.$defaultLangfile.'/main_lang.php';	
+		$this->defaultLangfile=$defaultLangfile;
+		$this->defaultLangfilepath=$defaultLangfilepath;
+			
+	}
+		
+	public function index()
+	{
+		if($this->getaccess==2)
+		{
+			//module and submodule access check
+			$data['sesmodulecodes']=$this->sesmodulecodes; 
+			$data['sessubmodulecodes']=$this->sessubmodulecodes;
+			
+			//mega menu content --------------- fetch modulename based on language selected		
+			$data['allactivemod']		= $this->allactivemod;
+			$data['activemodnames']		= $this->activemodnames;
+			$data['activemainmodnames'] = $this->activemainmodnames;
+			
+			//load sub modules of this controller
+			$controllercode = $this->uri->segment(1); 
+			$controllermodules =$this->Commonmodel->getcontrollermodules($this->languageID,$controllercode);
+			foreach($controllermodules as $consubmod)
+			{
+				$data['moduleCode']=$consubmod['moduleCode'];
+				$data['moduleName']=$consubmod['moduleName'];
+				if (in_array($consubmod['subModCode'],array_column($this->sessubmodulecodes, 'subModCode')))
+				{
+					if(stristr($consubmod['subModCode'], 'add'))
+					{
+					$data['addsubmod']=$consubmod['subModCode'];
+					}	
+					if(stristr($consubmod['subModCode'], 'view'))
+					{
+					$data['viewsubmod']=$consubmod['subModCode'];
+					}
+					if(stristr($consubmod['subModCode'], 'edit'))
+					{
+					$data['editsubmod']=$consubmod['subModCode'];
+					}
+					if(stristr($consubmod['subModCode'], 'delete'))
+					{
+					$data['deletesubmod']=$consubmod['subModCode'];
+					}
+				}
+			}
+			
+			//for display data 
+			$data['defaultlang'] = $this->defaultLangfile;
+			
+			$offset = $this->uri->segment(3);				
+			$offset = ($offset==''? 0 : $offset);
+			$limit = 20;
+			$total_results =$this->Languagemodel->listallLanguages();
+			$data['rows'] =$this->Languagemodel->listallLanguages(true,$offset,$limit);
+			$arr = array(
+				'base_url' => base_url('index.php/language/index'),
+				'total_rows' => count($total_results),
+				'uri_segment' => 3,
+				'per_page' => $limit,
+				);				
+			$config = pagination_initialization($arr);
+			$this->pagination->initialize($config);
+			$data['pagination'] = $this->pagination->create_links();
+			if(count($data['rows'])<0)
+				{
+					$this->session->set_flashdata('msg', $this->lang->line('nodata'));
+				}
+			$this->load->view('languagelist',$data);		
+			
+		}
+		else
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+	}
+	
+	public function addlanguage()
+	{  
+		
+		if($this->getaccess==2)
+		{
+			//module and submodule access check
+			$data['sesmodulecodes']=$this->sesmodulecodes; 
+			$data['sessubmodulecodes']=$this->sessubmodulecodes;
+			
+			//mega menu content --------------- fetch modulename based on language selected		
+			$data['allactivemod']		= $this->allactivemod;
+			$data['activemodnames']		= $this->activemodnames;
+			$data['activemainmodnames'] = $this->activemainmodnames;
+			
+			
+			$data['langs']			= $this->Languagemodel->allLanguages();
+			
+			if(isset($_POST['formSubmit']))
+			{
+				$insertedid=$this->Languagemodel->insertLanguages($this->adminID);
+				$includedata=$this->Languagemodel->includedataforlanguage($insertedid);
+				$input = ""; // this is the new folder you'll create
+				$inputlangName = $_POST['langcode'];
+				$input = strtolower($inputlangName); 
+				$newlangfile = "main_lang.php";
+				$targetDir = "application/language/$input/";
+				
+				if (!file_exists("application/language/$input"))
+				{ 
+					mkdir("application/language/$input", 0755, true);
+				}	
+				//if a new file is uploading
+				if(!empty($_FILES['file']['name']))
+				{	
+					$filename =basename($_FILES["file"]["name"]);
+					$temp = explode(".", $filename);
+					$newfilename = round(microtime(true)) . '.' . end($temp);
+					$targetFile = $targetDir.$newfilename;
+					if (move_uploaded_file($_FILES["file"]["tmp_name"], $targetFile)) 
+					{
+						$filepath=$targetFile;
+						$filecontent = file_get_contents($filepath);
+						file_put_contents("application/language/$input/main_lang.php", $filecontent);
+						unlink($filepath);
+					} 
+					else 
+					{
+						echo "Sorry, there was an error uploading your file.";
+					}
+				} 	
+				//if no file is added
+				else
+				{
+					$content = file_get_contents($this->defaultLangfilepath);
+					file_put_contents("application/language/$input/main_lang.php", $content); 
+				} 
+				redirect(base_url('index.php/language'));				
+			}
+			$this->load->view('addlanguage',$data);
+		}
+		else
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+	}
+	public function downloadfile()
+	{
+		$yourFile = $this->defaultLangfilepath;
+		$file = @fopen($yourFile, "rb");
+
+		header('Content-Description: File Transfer');
+		header('Content-Type: application/octet-stream');
+		header('Content-Disposition: attachment; filename=main_lang.php');
+		header('Expires: 0');
+		header('Cache-Control: must-revalidate');
+		header('Pragma: public');
+		header('Content-Length: ' . filesize($yourFile));
+		while (!feof($file)) {
+			print(@fread($file, 1024 * 8));
+			ob_flush();
+			flush();
+		}
+	}
+	
+	public function downloadlangfile()
+	{	
+		$input=$_REQUEST['lang'];
+		$yourFile = "application/language/".$input."/main_lang.php";
+		
+		$file = @fopen($yourFile, "rb");
+
+		header('Content-Description: File Transfer');
+		header('Content-Type: application/octet-stream');
+		header('Content-Disposition: attachment; filename=main_lang.php');
+		header('Expires: 0');
+		header('Cache-Control: must-revalidate');
+		header('Pragma: public');
+		header('Content-Length: ' . filesize($yourFile));
+		while (!feof($file)) {
+			print(@fread($file, 1024 * 8));
+			ob_flush();
+			flush();
+		}
+	}	
+	public function viewlanguage()
+	{	
+		if($this->getaccess==2)
+		{
+			//module and submodule access check
+			$data['sesmodulecodes']=$this->sesmodulecodes; 
+			$data['sessubmodulecodes']=$this->sessubmodulecodes;
+			
+			//mega menu content --------------- fetch modulename based on language selected		
+			$data['allactivemod']		= $this->allactivemod;
+			$data['activemodnames']		= $this->activemodnames;
+			$data['activemainmodnames'] = $this->activemainmodnames;
+			
+			
+			$data['langAr'] = $this->Languagemodel->allLanguages();
+			$langaID = $this->uri->segment(3);
+			$data['rows']=$this->Languagemodel->langShow($langaID,$this->languageID);
+			$this->load->view('viewlanguage', $data);
+		}
+		else
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+	} 
+	public function editlanguage()
+	{
+		
+		if($this->getaccess==2)
+		{
+			//module and submodule access check
+			$data['sesmodulecodes']=$this->sesmodulecodes; 
+			$data['sessubmodulecodes']=$this->sessubmodulecodes;
+			
+			//mega menu content --------------- fetch modulename based on language selected		
+			$data['allactivemod']		= $this->allactivemod;
+			$data['activemodnames']		= $this->activemodnames;
+			$data['activemainmodnames'] = $this->activemainmodnames;
+			
+			
+			$languageID = $this->uri->segment(3);				
+			$data['curntdata'] = $this->Languagemodel->languageDetails($languageID);
+			//print_r($data['curntdata']);exit;
+			$data['languageID']=$languageID;
+			if(isset($_POST['formSubmit']))
+			{
+				$this->Languagemodel->editLanguage($languageID,$this->adminID);
+				$inputlangName = $_POST['langcode'];
+				$oldfolder = $_POST['langFolder'];
+				$newfilename = "main_lang.php";
+				$languageFolder = strtolower($inputlangName);
+				$changes=strcmp($languageFolder,$oldfolder); 
+				if($changes==0)
+				{
+					$languageFolder=$oldfolder;
+					$input = ""; // this is the new folder you'll create
+					$input = $languageFolder;
+					$targetDir = "application/language/".$input; 
+					if (!file_exists($targetDir))
+					{ 
+						mkdir($targetDir, 0755, true);
+					}	
+				}
+				else
+				{	
+					$input = ""; // this is the new folder you'll create
+					$input = $languageFolder;
+					$newDir = "application/language/".$input;
+					$oldDir = "application/language/".$oldfolder;
+					$targetDir = $newDir;				
+					if (!file_exists($targetDir)) 
+					{ 	
+						rename($oldDir,$newDir); 
+					}
+				
+				}
+										
+				if(!empty($_FILES['file']['name']))
+				{	
+					$filename =basename($_FILES["file"]["name"]);
+					$temp = explode(".", $filename);
+					$newfilename = round(microtime(true)) . '.' . end($temp);
+					$targetFile = $targetDir.$newfilename;
+					$oldfile="application/language/".$input."/main_lang.php";
+					unlink($oldfile);
+					if (move_uploaded_file($_FILES["file"]["tmp_name"], $targetFile)) 
+					{
+						$filepath=$targetFile;
+						$filecontent = file_get_contents($filepath);
+						file_put_contents("application/language/$input/main_lang.php", $filecontent);
+						unlink($filepath);
+						
+					} 
+					else 
+					{
+						echo "Sorry, there was an error uploading your file.";
+					}
+				} 				
+				redirect(base_url('index.php/language'));				
+			}
+			$this->load->view('addlanguage',$data);
+		}
+		else
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+	}
+	public function deletelanguage()
+	{
+		if($this->getaccess==2)
+		{
+			//module and submodule access check
+			$data['sesmodulecodes']=$this->sesmodulecodes; 
+			$data['sessubmodulecodes']=$this->sessubmodulecodes;
+			
+			//mega menu content --------------- fetch modulename based on language selected		
+			$data['allactivemod']		= $this->allactivemod;
+			$data['activemodnames']		= $this->activemodnames;
+			$data['activemainmodnames'] = $this->activemainmodnames;
+			
+			
+			$languageID = $this->uri->segment(3);
+			$result = $this->Languagemodel->langdelete($languageID);
+			if($result==1)
+			{
+			$this->session->set_flashdata('msg','Language Deleted Successfully');
+			}
+			else{
+			$this->session->set_flashdata('msg','Language Delete failed');	
+			}
+			redirect(base_url('index.php/language'));
+		}
+		else
+		{
+			//echo "no access"; exit;
+			redirect('dashboard');
+		}
+	}
+
+	
+}
+
+?>
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, shrink-to-fit=no, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title><?php echo $this->lang->line('Language');?></title>
+
+    <!-- Bootstrap Core CSS -->
+    <link href="<? echo base_url();?>public/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<? echo base_url();?>public/css/jquery-ui.css">
+
+    <!-- Custom CSS -->
+    <link href="<? echo base_url();?>public/css/simple-sidebar.css" rel="stylesheet">    
+    <link href="<? echo base_url();?>public/css/content.css" rel="stylesheet">
+	<link href="<?php echo base_url();?>public/css/alertcustom.css" rel="stylesheet" type="text/css">
+	
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+</head>
+
+<body> 
+
+    <?php $this->view('headerl'); ?>
+	
+    <div id="wrapper">
+	
+		<?php $this->view('left'); ?> 
+		
+        <!-- Page Content -->
+        <div id="page-content-wrapper">
+		<form action="" method="POST" enctype="multipart/form-data" onsubmit="return Validate(this);"> 
+			
+				<div class="container-fluid"> 
+				
+					<div class="row weldiv">
+					
+							<div class="col-xs-10 col-sm-10 col-md-9 ">
+							  <p id="apart"><?php
+							
+							  if(isset($languageID) && $languageID !=''){echo $this->lang->line('editlanguage'); }else{echo $this->lang->line('addlanguage');} ?></p> 							 
+							</div>
+							
+							<div class="col-xs-2 col-sm-2 col-md-3 datediv">
+							
+								<a href="<?php echo base_url() ?>index.php/language"><img id="backbtn" src="<? echo base_url();?>public/images/back.svg"></a> 
+								
+							</div>                   
+							
+					</div>
+					<br>
+						
+					<!--edit-->
+					<div class="row">
+					
+						<div class="col-xs-12 col-sm-12 col-md-6 form1_div"> 
+							<?php echo $this->lang->line('Name'); 
+							?>*
+							<input type="text" class="form-control" name="langName" id="langName" placeholder="" value='<?php if(isset($curntdata[0]['langName'])){ echo $curntdata[0]['langName'];}?>' autocomplete="off" required><br>
+							
+							<?php echo $this->lang->line('langalert');?>*
+							<span style='width:100%;height:10px;;color:#ff0000;font-size:10px;display:none' id='engonly' name='engonly'>
+								<?php echo $this->lang->line('Englishlettersonly');?>
+							</span>
+							
+							<input type="text" class="form-control" id="langcode" name="langcode" placeholder="" value='<?php if(isset($curntdata[0]['langCode'])){ echo $curntdata[0]['langCode'];}?>' autocomplete="off" required><br>
+							<?php echo $this->lang->line('languagefile');?>*							 
+							<?php $exist=0; 
+							if(isset($curntdata[0]['langName']))
+							{ 
+								$input=$curntdata[0]['langFolder'];
+								$directory = "application/language/".$input."/";
+								$filename = "main_lang.php";
+								//echo $directory . $filename;
+								if(file_exists($directory . $filename))
+								{   $exist=1;
+									?> <a href="<?php echo base_url(); ?>index.php/language/downloadlangfile?lang=<?php echo $input; ?>">
+									<?php echo $curntdata[0]['langFolder'];?></a>
+									<?php
+								}
+								else
+								{	
+									?> <a href="<?php echo base_url(); ?>index.php/language/downloadfile"><?php echo $this->lang->line('downloadsamplefile');?></a> <?php
+								}
+							}
+							else
+							{
+								?> <a href="<?php echo base_url(); ?>index.php/language/downloadfile"><?php echo $this->lang->line('downloadsamplefile');?></a> <?php
+							}
+							?>							
+							</br>	</br>						
+							<input type="file" id="file" name="file" <?php if($exist==0){?> required <?php } ?>/>
+							<input type="hidden" name="action" value="upload"/>	
+								
+							<br>
+							<?php if(!isset($curntdata)){ ?>
+							<label for="">
+							<input type="checkbox" name="includedata" id="includedata" class="" value="Yes"/>
+							<?php echo $this->lang->line('languagecheckbox');?>
+							</label>
+							</br>
+							<font color="#9c9c9c">
+							<?php echo $this->lang->line('languagenotice');?>						
+							</font>
+							</br></br>
+							<?php } ?>
+						</div>
+
+						<div class="col-xs-12 col-sm-12 col-md-6 form3_div">
+						 <?php echo $this->lang->line('Description');?>
+							<textarea name="langdesc" id="langdesc"  class="form-control" rows="5" placeholder=""><?php if(isset($curntdata[0]['langDesc'])){ echo $curntdata[0]['langDesc'];}?></textarea><br>
+							<?php echo $this->lang->line('Status');?>*
+							<select name="langStatus" id="langStatus" class="form-control" required="">
+								<option value=""><?php echo $this->lang->line('Status');?>*</option>
+								<option  value="Active" selected <?php if(isset($curntdata[0]['langStatus'])){ echo ($curntdata[0]['langStatus']=='Active'?'selected':'');}?>>Active </option>
+								<option value="Inactive" <?php if(isset($curntdata[0]['langStatus'])){ echo ($curntdata[0]['langStatus']=='Inactive'?'selected':''); }?>>Inactive</option>
+								
+							</select>
+							<input type="hidden" name="langFolder" id="langFolder" value="<?php if(isset($curntdata[0]['langFolder'])){ echo $curntdata[0]['langFolder'];}?>"/>
+							<br>
+						</div>
+					
+					</div>
+									
+						<br>
+						<div class="savebtndiv">  
+						<input type="submit" name="formSubmit" id="formSubmit" class="btn savebtn btn-sm" value="<?php echo $this->lang->line('save');?>" /> 
+					</div>  <br>
+					
+					<!--edit-->	
+					
+				</div>
+				
+			</form>
+			
+		</div>
+		
+        <!-- /#page-content-wrapper -->
+
+    </div>
+    <!-- /#wrapper -->
+
+   
+   <?php $this->view('footer'); ?>
+<script>   
+	var _validFileExtensions = [".php",".txt"];    
+	function Validate(oForm) {
+	var arrInputs = oForm.getElementsByTagName("input");
+	for (var i = 0; i < arrInputs.length; i++) {
+		var oInput = arrInputs[i];
+		if (oInput.type == "file") {
+			var sFileName = oInput.value;
+			if (sFileName.length > 0) {
+				var blnValid = false;
+				for (var j = 0; j < _validFileExtensions.length; j++) {
+					var sCurExtension = _validFileExtensions[j];
+					if (sFileName.substr(sFileName.length - sCurExtension.length, sCurExtension.length).toLowerCase() == sCurExtension.toLowerCase()) {
+						blnValid = true;
+						break;
+					}
+				}
+				
+				if (!blnValid) {
+					alert("Sorry, " + sFileName + " is invalid, allowed extensions are: " + _validFileExtensions.join(", "));
+					return false;
+				}
+			}
+		}
+	}
+
+	return true;
+	}
+	</script>
+	<script>			
+		var engbox	="langcode";
+		var formSubmit = "formSubmit";
+		var base_url = window.location.origin;
+		$('#' + engbox).keyup(function()
+		{
+			var englishonly 	= $('#' + engbox).val();
+			var engval 	= /^[A-Za-z]*$/;
+			if (!englishonly.match(engval) && englishonly.length!="")
+			{
+				$("#engonly").show();
+				$('#' + formSubmit).attr('disabled','disabled');
+			}
+			else
+			{
+				$('#engonly').hide();
+				$('#' + formSubmit).attr('disabled',false);
+			}
+			
+		});
+	</script>
+</body>
+
+</html>
